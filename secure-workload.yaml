@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Pod
+
+metadata:
+  name: secure-prod-app
+  namespace: prod-app
+
+  labels:
+    app: secure-prod-app
+
+    # Required for AKS workload identity mutation.
+    azure.workload.identity/use: "true"
+
+spec:
+
+  serviceAccountName: prod-app-sa
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+
+    seccompProfile:
+      type: RuntimeDefault
+
+  containers:
+
+    - name: app
+      image: busybox:1.36
+
+      command:
+        - /bin/sh
+        - -c
+
+      args:
+        - |
+          echo "Application started securely."
+          echo "Checking Key Vault mounted secret..."
+          test -s /mnt/secrets-store/db-password && echo "Secret successfully mounted."
+          sleep 3600
+
+      securityContext:
+
+        allowPrivilegeEscalation: false
+
+        capabilities:
+          drop:
+            - ALL
+
+        readOnlyRootFilesystem: true
+
+      volumeMounts:
+
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true
+
+  volumes:
+
+    - name: secrets-store
+
+      csi:
+        driver: secrets-store.csi.k8s.io
+        readOnly: true
+
+        volumeAttributes:
+          secretProviderClass: prod-keyvault
